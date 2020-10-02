@@ -1,0 +1,356 @@
+---
+title: "Harry Potter kNN Padawan is Me"
+author: "Yahya Gahbiche"
+date: "10/1/2020"
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+---
+
+# Clear environment
+
+```{r}
+# Clear environment of variables and functions
+rm(list = ls(all = TRUE)) 
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Clear environment of packages
+if(is.null(sessionInfo()$otherPkgs) == FALSE)lapply(paste("package:", names(sessionInfo()$otherPkgs), sep=""), detach, character.only = TRUE, unload = TRUE)
+```
+
+
+
+# Load Libraries:
+
+```{r}
+library(FNN)
+library(class)
+library(ggplot2)
+library(lattice)
+library(caret)
+
+
+```
+
+
+# Load the data
+
+```{r}
+hogwarts <- read.csv("super_heroes_hogwarts_v3a.csv", header = TRUE)
+
+# View data, first 10 rows
+head(hogwarts,10)
+
+```
+
+
+
+## Exploring the data: 
+
+```{r}
+# Looking at data types
+str(hogwarts)
+
+# Looking at names of different fields
+names(hogwarts)
+
+# Number of rows:
+nrow(hogwarts)
+
+```
+
+## Removing unnecessary variables
+
+```{r}
+hogwarts <- hogwarts[ , -c(1:8, 17, 19:26)]
+names(hogwarts) # We will use 6 variables to predict the house
+
+```
+
+
+## Look at the variables and new order 
+
+```{r}
+# transposed
+t(t(names(hogwarts))) 
+
+# Exploring dataset: Data types
+str(hogwarts)
+
+# number of rows: Still the same
+nrow(hogwarts) 
+
+# Viewing all different houses in a table
+table(hogwarts$House)
+nrow(hogwarts)
+
+```
+
+## Set House as a factor
+```{r}
+hogwarts$House <- as.factor(hogwarts$House)
+```
+
+# Training - Validation split
+
+```{r}
+# Set the seed
+
+set.seed(666)
+```
+
++ Randomly sample the rows via their indexes (row number)
+We did 70-30 split
+
+```{r}
+# Data partitioning
+
+train_index <- sample(1:nrow(hogwarts), 0.7 * nrow(hogwarts)) 
+valid_index <- setdiff(1:nrow(hogwarts), train_index)
+
+```
+
+
++ Assign the randomly selected indexes to the dataset to create the training and validation sets
+
+```{r}
+# Create training and validation datasets
+
+train_df <- hogwarts[train_index, ] 
+valid_df <- hogwarts[valid_index, ]
+
+```
+It's a good idea to check the datasets before continuing 
+
+```{r}
+nrow(train_df)
+nrow(valid_df)
+
+head(train_df)
+head(valid_df)
+
+str(train_df)
+str(valid_df)
+
+```
+
+# Set new Padawan: Me
+
+```{r}
+
+padawan_1 <- data.frame(Manipulative = 2,
+                        Resourceful = 8,
+                        Dismissive = 2,
+                        Intelligent = 7,
+                        Trusting = 5,
+                        Loyal = 10,
+                        Stubborn = 7,
+                        Brave = 9)
+
+padawan_1
+```
+
+# Normalization
+
++This is needed if predictors are on a different scale.
++In this case, this is just for illustration.
+
+```{r}
+# Assign normalized data to a new dataframe
+train_norm <- train_df
+valid_norm <- valid_df
+```
+
+First, create a normalising algorithm using the 8 variables in the training set.
+
+```{r}
+# Just double checking we still have our 8 variables
+names(train_df)
+```
+
+```{r}
+# Normalization algorithm
+
+norm_values <- preProcess(train_df[, -c(9)],
+                          method = c("center",
+                                     "scale"))
+
+# Normalizing training dataset using train_df
+
+train_norm[, -c(9)] <- predict(norm_values,
+                               train_df[, -c(9)])
+
+head(train_norm)
+```
+
++ Then using these normalizing algorithm, predict the normalized values of the validation set.
+
+```{r}
+# Normalizing validation dataset
+
+valid_norm[, -c(9)] <- predict(norm_values,
+                               valid_df[, -c(9)])
+
+
+head(valid_norm)
+```
+
++ Finally, predict the normalized values for the new padawan (i.e. the new record)
+
+```{r}
+padawan_1_norm <- predict(norm_values, padawan_1)
+padawan_1_norm
+
+```
+# Optimal k for kNN
+
+First, create a df for accuracy using values from 1 to 19, 1 step at a time.
+
+```{r}
+accuracy_df <- data.frame(k = seq(1, 19, 1), accuracy = rep(1, 19))
+accuracy_df
+```
+
+```{r}
+# Still checking on train_norm 
+
+names(train_norm)
+head(train_norm)
+names(valid_norm)
+head(valid_norm)
+
+```
++ Obtain the accuracies using k = i, then generate the output as df. For a large dataset, this can take a while. We can choose k = 8, but to prevent a random tie breaker.
++ This is characteristic of kNN, it’s better to use an odd number k.
+
+```{r}
+# Using a loop function to find the best k 
+
+for (i in 1:19) {
+  knn_pred <- class::knn(train_norm[, -c(9)],
+                         valid_norm[, -c(9)],
+                         cl = train_norm[, 9], k = i)
+  accuracy_df[i, 2] <- confusionMatrix(knn_pred,
+                                       factor(valid_norm[, 9]))$overall[1]
+}
+
+accuracy_df
+```
+
++ If you like, plot the accuracies for different k for illustration.
+
+```{r}
+# Plotting using ggplot2
+
+ggplot(data = accuracy_df) + aes(x = k, y = accuracy) +
+  geom_line() + xlab("Different k") + ylab("Accuracy") +
+  ggtitle("Accuracies for different values of k") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  annotate("text", x = 10, y = 0.825, label = "k = 7 may be suitable") +
+  geom_vline(xintercept = 7, linetype = "dashed", color = "red")
+  
+```
+
+# kNN for k = 7
+
+```{r}
+# Train the kNN model using k = 7
+
+knn_pred_k7 <- class::knn(train = train_norm[, -c(9)],
+                          test = valid_norm[, -c(9)],
+                          cl = train_df$House,
+                          k = 7)
+```
+
+```{r}
+# Confusion Matrix for the model
+confusionMatrix(knn_pred_k7, as.factor(valid_df[, 9]))
+```
+
+```{r}
+# Associated probability of the prediction
+
+knn_pred_k7_prob <- class::knn(train = train_norm[, -c(9)],
+                               test = valid_norm[, -c(9)],
+                               cl = train_norm$House,
+                               k = 7,
+                               prob = TRUE)
+
+knn_pred_k7_prob
+```
+
+
++ Using the trained model, predict the class (i.e. House) of the validation set.
+
+
+```{r}
+# Predicting outcome using the validation data
+
+knn_pred_k7_valid <- class::knn(train = train_norm[, -c(9)],
+                                test = valid_norm[, -c(9)],
+                                cl = train_norm[, c(9)],
+                                k = 7)
+
+
+knn_pred_k7_valid
+```
+
+```{r}
+# Compute the probability.
+
+attr(knn_pred_k7_prob, "prob")
+```
+
+# Sorting hat for the new padawan
+
++ Now predict the class (i.e. House) for the new padawan using the same approach.
+
++ Compute the probabilities, so we know how probable was each class for this new padawan.
+
+```{r}
+# checking names
+
+names(train_norm)
+names(padawan_1_norm)
+
+
+```
+```{r}
+# Predicting the outcome of the new padawan
+
+padawan_1_pred <- class::knn(train = train_norm[, -c(9)],
+                             test = padawan_1_norm,
+                             cl = train_norm$House,
+                             k =7)
+
+padawan_1_pred
+
+```
+
++ Now let's do the prob
+
+```{r}
+# probability of the padawan outcome
+padawan_1_pred_prob <- class::knn(train = train_norm[, -c(9)],
+                                  test = padawan_1_norm[, -c(9)],
+                                  cl = train_norm$House,
+                                  k = 7,
+                                  prob = TRUE)
+
+padawan_1_pred_prob
+
+```
+
+
+
+
+
+
+
+
+
