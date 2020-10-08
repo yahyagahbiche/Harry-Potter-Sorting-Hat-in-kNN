@@ -1,5 +1,5 @@
 ---
-title: "Harry Potter kNN Padawan is Me"
+title: "Harry Potter kNN Sorting Hat"
 author: "Yahya Gahbiche"
 date: "10/1/2020"
 output: 
